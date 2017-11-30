@@ -1,0 +1,279 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Nov 20 14:48:28 2017
+
+@author: LemonNation
+"""
+
+#Dense_net for cifar-10 PUlearning
+
+
+import numpy as np
+import tensorflow as tf
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ['CUDA_VISIBLE_DEVICES']=''
+
+Probility_P=0.4
+BETA=1e-3
+sess=tf.InteractiveSession()
+
+def unpickle(file):
+    import cPickle
+    with open(file, 'rb') as fo:
+        dict = cPickle.load(fo)
+    if 'data' in dict:
+        dict['data'] = dict['data'].reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2).reshape(-1, 32*32*3) / 256.
+    return dict
+
+#def unpickle(file):
+#    imp    P_p=tf.multiply((1/(1+tf.exp(y_pred)))/P_size,y_true)
+#    P_n=tf.multiply((1/(1+tf.exp(-y_pred)))/P_size,y_true)
+#    P_u=tf.multiply((1/(1+tf.exp(-y_pred)))/u_size,u_mask)
+#    Mask_1=tf.greater_equal(tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta),P_u)
+#    Mask_2=tf.greater(P_u,tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta))
+#    Mask_1=tf.cast(Mask_1,dtype=tf.float32)
+#    Mask_2=tf.cast(Mask_2,dtype=tf.float32)
+#    PU_1=tf.add(Probility_P*P_p,tf.add(P_u,-Probility_P*P_n))
+##    print("one_u.eval():",one_u.eval())
+#    PU_2=tf.add(P_u,-Probility_P*P_n)
+#    if tf.greater(-BETA,tf.reduce_sum(PU_2)) is True:
+#        return (tf.reduce_sum(PU_2)-tf.constant(BETA,dtype=tf.float32,shape=[1]))
+#    else:
+#        return tf.reduce_sum(PU_1))ort pickle
+##    with open(file, 'rb') as fo:
+#        dict = pickle.load(fo, encoding='bytes')
+#    return dict
+
+def load_data_one(f):
+  batch = unpickle(f)
+  data = batch['data']
+  labels = batch['labels']
+  print ("Loading %s: %d" % (f, len(data)))
+  return data, labels
+
+def load_data(files, data_dir, label_count):
+  data, labels = load_data_one(data_dir + '/' + files[0])
+  for f in files[1:]:
+    data_n, labels_n = load_data_one(data_dir + '/' + f)
+    data = np.append(data, data_n, axis=0)
+    labels = np.append(labels, labels_n, axis=0)
+  labels = np.array([ [ float(i == label) for i in range(label_count) ] for label in labels ])
+  return data, labels
+
+def run_in_batch_avg(session, tensors, batch_placeholders, feed_dict={}, batch_size=100):                              
+  res = [ 0 ] * len(tensors)                                                                                           
+  batch_tensors = [ (placeholder, feed_dict[ placeholder ]) for placeholder in batch_placeholders ]                    
+  total_size = len(batch_tensors[0][1])                                                                                
+  batch_count = (total_size + batch_size - 1) / batch_size                                                             
+  for batch_idx in range(batch_count):                                                                                
+    current_batch_size = None                                                                                          
+    for (placeholder, tensor) in batch_tensors:                                                                        
+      batch_tensor = tensor[ batch_idx*batch_size : (batch_idx+1)*batch_size ]                                         
+      current_batch_size = len(batch_tensor)                                                                           
+      feed_dict[placeholder] = tensor[ batch_idx*batch_size : (batch_idx+1)*batch_size ]                               
+    tmp = session.run(tensors, feed_dict=feed_dict)                                                                    
+    res = [ r + t * current_batch_size for (r, t) in zip(res, tmp) ]                                                   
+  return [ r / float(total_size) for r in res ]
+
+def weight_variable(shape):
+  initial = tf.truncated_normal(shape, stddev=0.01)
+  initial.graph 
+  return tf.Variable(initial)
+
+def bias_variable(shape):
+  initial = tf.constant(0.01, shape=shape)
+  return tf.Variable(initial)
+
+def conv2d(input, in_features, out_features, kernel_size, with_bias=False):
+  W =weight_variable([ kernel_size, kernel_size, in_features, out_features ])
+#  tf.add_to_collection('vars',W)
+  conv = tf.nn.conv2d(input, W, [ 1, 1, 1, 1 ], padding='SAME')
+  if with_bias:
+    return conv + bias_variable([ out_features ])
+  return conv
+
+def batch_activ_conv(current, in_features, out_features, kernel_size, is_training, keep_prob):
+  current = tf.contrib.layers.batch_norm(current, scale=True, is_training=is_training, updates_collections=None)
+  current = tf.nn.relu(current)
+  current = conv2d(current, in_features, out_features, kernel_size)
+  current = tf.nn.dropout(current, keep_prob)
+  return current
+
+def block(input, layers, in_features, growth, is_training, keep_prob):
+  current = input
+  features = in_features
+  for idx in range(layers):
+    tmp = batch_activ_conv(current, features, growth, 3, is_training, keep_prob)
+    current = tf.concat([current, tmp],3) 
+    features += growth
+  return current, features
+
+def avg_pool(input, s):
+  return tf.nn.avg_pool(input, [ 1, s, s, 1 ], [1, s, s, 1 ], 'VALID')
+
+  
+def PU_loss(y_true,y_pred):
+    #    mask=tf.greater(y_,sample)
+##PU_LOSS
+    
+#    beta=tf.constant(BETA,dtype=tf.float32,shape=[BATCH_SIZE,1])
+    one_u=tf.ones(shape=tf.shape(y_true),dtype=tf.float32)
+    u_mask=tf.abs(tf.add(y_true,-one_u))
+    P_size=tf.reduce_sum(y_true,axis=None)
+    u_size=tf.reduce_sum(u_mask)
+    P_p=tf.multiply((1/(1+tf.exp(y_pred)))/P_size,y_true)
+    P_n=tf.multiply((1/(1+tf.exp(-y_pred)))/P_size,y_true)
+    P_u=tf.multiply((1/(1+tf.exp(-y_pred)))/u_size,u_mask)
+#    Mask_1=tf.greater_equal(tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta),P_u)
+#    Mask_2=tf.greater(P_u,tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta))
+#    Mask_1=tf.cast(Mask_1,dtype=tf.float32)
+#    Mask_2=tf.cast(Mask_2,dtype=tf.float32)
+    PU_1=tf.add(Probility_P*P_p,tf.add(P_u,-Probility_P*P_n))
+#    print("one_u.eval():",one_u.eval())
+    PU_2=tf.add(P_u,-Probility_P*P_n)
+    if tf.greater(-BETA,tf.reduce_sum(PU_2)) is True:
+        return tf.reduce_sum(PU_2)-tf.constant(BETA,dtype=tf.float32,shape=[1])
+    else:
+        return tf.reduce_sum(PU_1)
+  
+    
+
+def run_model(data, image_dim, label_count, depth):
+#  weight_decay = 1e-4
+  layers = (depth - 4) / 3
+#  graph = tf.Graph()
+#  with graph.as_default():
+  xs = tf.placeholder("float", shape=[None, image_dim])
+  ys = tf.placeholder("float", shape=[None, label_count])
+  y_real = tf.placeholder("float", shape=[None, label_count])
+  lr = tf.placeholder("float", shape=[])
+  keep_prob = tf.placeholder(tf.float32)
+  is_training = tf.placeholder("bool", shape=[])
+  not_training = tf.constant(False, shape=[])
+
+
+  current = tf.reshape(xs, [ -1, 32, 32, 3 ])
+  with tf.name_scope('pre_trained_layer'):
+        current= conv2d(current, 3, 16, 3)
+    
+        current, features = block(current, layers, 16, 12, not_training, keep_prob)
+        current = batch_activ_conv(current, features, 12, 1, not_training, keep_prob)
+        current = avg_pool(current, 2)
+        current, features = block(current, layers, 12, 24, not_training, keep_prob)
+        current = batch_activ_conv(current, features, 24, 1, not_training, keep_prob)
+        current = avg_pool(current, 2)
+        current, features = block(current, layers, 24, 48, not_training, keep_prob)
+        current = conv2d(current, features, features+8, 3)
+        features=features+8
+        current = tf.contrib.layers.batch_norm(current, scale=True, is_training=not_training, updates_collections=None)
+        current = tf.nn.relu(current)
+        current = avg_pool(current, 8)
+  with tf.name_scope('nnPU_layer'):
+        final_dim = features
+        current = tf.reshape(current, [ -1, final_dim ])
+        Wfc = weight_variable([ final_dim, label_count ])
+        bfc = bias_variable([ label_count ])
+        ys_ = tf.nn.tanh(tf.matmul(current, Wfc)+ bfc)
+
+#    cross_entropy = -tf.reduce_mean(ys * tf.log(ys_ + 1e-12))
+#  l2 = tf.add_n([tf.nn.l2_loss(var) for var in tf.trainable_variables()])
+        train_step = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True).minimize(PU_loss(ys,ys_))# + l2 * weight_decay
+        correct_pred=tf.greater(ys_,0)
+        val=tf.greater(y_real,0)
+        accuracy=tf.reduce_mean(tf.cast(tf.equal(val,correct_pred),tf.float32))
+
+  with tf.Session() as session:
+        batch_size = 1000
+        learning_rate = 1    
+        session.run(tf.global_variables_initializer()) 
+#        model_path='/opt/Data/ChenXY/PULEARNING/Dense_net/densenet_12.ckpt'
+#        Weight_val=tf.get_collection('vars')
+        saver = tf.train.Saver()#var_list=Weight_val
+##        pre_train_model=tf.train.get_checkpoint_state(model_path)
+##        pre_train_model.re
+#        saver.restore(sess,model_path)
+        
+
+    #    for v in all_vars:
+    #        print(v)
+    #        print(v.name)
+    #        v_ = v.eval() # sess.run(v)
+    #        print(v_)
+        train_data, train_labels ,train_label_true= data['train_data'], data['train_labels'],data['train_labels_real']
+        batch_count = np.int(len(train_data) / batch_size)
+        batches_data = np.split(train_data[:batch_count * batch_size], batch_count)
+        batches_labels = np.split(train_labels[:batch_count * batch_size], batch_count)
+        batches_labels_true = np.split(train_label_true[:batch_count * batch_size], batch_count)
+        
+        print ("Batch per epoch: ", batch_count)
+        for epoch in range(1, 1+300):
+          if epoch == 50: learning_rate = 0.1
+          if epoch == 100: learning_rate = 0.01
+          for batch_idx in range(batch_count):
+            xs_, ys_ ,ys_real= batches_data[batch_idx], batches_labels[batch_idx],batches_labels_true[batch_idx]
+            batch_res = session.run([ train_step, PU_loss(ys,ys_),accuracy ],
+              feed_dict = { xs: xs_, ys: ys_, y_real:ys_real , lr: learning_rate, is_training: True, keep_prob: 0.8 })
+            print( epoch, batch_idx, batch_res[1:])#if batch_idx % 100 == 0: 
+    
+          save_path = saver.save(session, 'densenet_%d.ckpt' % epoch)
+#          test_results = run_in_batch_avg(session, [ PU_loss(ys,ys_), accuracy ], [ xs, ys ,y_real],batch_size=batch_size,
+#              feed_dict = { xs: data['test_data'], ys: data['test_labels'], y_real:data['test_labels'] 
+#              ,is_training: False, keep_prob: 1. })
+#          print (epoch, batch_res[1:], test_results)
+
+def run():
+  data_dir = '/opt/Data/ChenXY/PULEARNING/Dense_nnPU/Cifra_10/cifar-10-batches-py'
+  image_size = 32
+  image_dim = image_size * image_size * 3
+#  meta = unpickle(data_dir + '/batches.meta')
+#  label_names = meta[b'label_names']
+  label_count = 1
+  positive_rate=0.01
+
+
+  train_files = [ 'data_batch_%d' % d for d in range(1, 6) ]
+  train_data, train_labels = load_data(train_files, data_dir, 10)
+  pi = np.random.permutation(len(train_data))
+  train_data, train_labels = train_data[pi], train_labels[pi]
+  test_data, test_labels = load_data([ 'test_batch' ], data_dir, 10)
+  print( "Train:", np.shape(train_data), np.shape(train_labels))
+  print ("Test:", np.shape(test_data), np.shape(test_labels))
+  #preprocess data into labeled and unlabeled data
+  P_label=[0,1,8,9]
+  P_label=np.array(P_label)
+  N_label=[2,3,4,5,6,7]
+  N_label=np.array(N_label)
+  Label_training=np.random.random([len(train_labels)])  
+  train_labels_pu=[]
+  for i in range(len(train_labels)):
+      for j in range(len(train_labels[1,:])):
+          if j in P_label and train_labels[i,j] ==1:
+              train_labels_pu.append(1)
+          if j in N_label and train_labels[i,j] ==1:
+              train_labels_pu.append(-1)
+  train_labels_real=np.array(train_labels_pu)
+  for i in range(len(train_labels_pu)):
+      if Label_training[i]>positive_rate or train_labels_pu[i]==-1:
+            train_labels_pu[i]=0
+  train_labels_pu=np.float32(train_labels_pu)
+  
+  test_labels_pu=[]
+  for i in range(len(test_labels)):
+      for j in range(len(test_labels[1,:])):
+          if j in P_label and test_labels[i,j] ==1:
+              test_labels_pu.append(1)
+          if j in N_label and test_labels[i,j] ==1:
+              test_labels_pu.append(-1)
+  test_labels_pu=np.float32(test_labels_pu)
+  train_labels_pu=np.reshape(train_labels_pu,[50000,1])
+  train_labels_real=np.reshape(train_labels_real,[50000,1])
+  test_labels_pu=np.reshape(test_labels_pu,[10000,1])
+  data = { 'train_data': train_data,
+      'train_labels': train_labels_pu,
+      'train_labels_real':train_labels_real,
+      'test_data': test_data,
+      'test_labels': test_labels_pu }
+  run_model(data, image_dim, label_count, 40)
+
+run()
