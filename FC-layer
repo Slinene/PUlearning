@@ -1,0 +1,370 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 10 19:19:04 2017
+
+@author: LemonNation
+"""
+import os 
+import copy
+##
+import numpy as np
+import tensorflow as tf
+from tensorflow.examples.tutorials.mnist import input_data
+#mnist = input_data.read_data_sets('MNIST_data/',one_hot=True)
+sess=tf.InteractiveSession()
+#lr=1e-4
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+#
+#def unpickle(file):
+#    import cPickle
+#    with open(file, 'rb') as fo:
+#        dict = cPickle.load(fo)
+#    return dict
+
+def unpickle(file):
+    import pickle
+    with open(file, 'rb') as fo:
+        dict = pickle.load(fo, encoding='bytes')
+    return dict
+
+def load_data_one(f):
+  batch = unpickle(f)
+  print(batch.keys())
+  data = batch[b'data']
+  labels = batch[b'labels']
+  print ("Loading %s: %d" % (f, len(data)))
+  return data, labels
+
+def load_data(files, data_dir, label_count):
+  data, labels = load_data_one(data_dir + '/' + files[0])
+  for f in files[1:]:
+    data_n, labels_n = load_data_one(data_dir + '/' + f)
+    data = np.append(data, data_n, axis=0)
+    labels = np.append(labels, labels_n, axis=0)
+  labels = np.array([ [ float(i == label) for i in range(label_count) ] for label in labels ])
+  return data, labels
+
+
+def PU_loss(y_true,y_pred):#sigmoid loss
+    #    mask=tf.greater(y_,sample)
+##PU_LOSS
+    
+#    beta=tf.constant(BETA,dtype=tf.float32,shape=[BATCH_SIZE,1])
+    one_u=tf.ones(shape=tf.shape(y_true),dtype=tf.float32)
+    u_mask=tf.abs(tf.add(y_true,-one_u))
+    P_size=tf.reduce_sum(y_true,axis=None)
+    u_size=tf.reduce_sum(u_mask)
+    P_p=tf.multiply((1/(1+tf.exp(y_pred)))/P_size,y_true)
+    P_n=tf.multiply((1/(1+tf.exp(-y_pred)))/P_size,y_true)
+    P_u=tf.multiply((1/(1+tf.exp(-y_pred)))/u_size,u_mask)
+#    Mask_1=tf.greater_equal(tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta),P_u)
+#    Mask_2=tf.greater(P_u,tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta))
+#    Mask_1=tf.cast(Mask_1,dtype=tf.float32)
+#    Mask_2=tf.cast(Mask_2,dtype=tf.float32)
+    PU_1=tf.add(Probility_P*P_p,tf.add(P_u,-Probility_P*P_n))
+#    print("one_u.eval():",one_u.eval())
+    PU_2=tf.add(P_u,-Probility_P*P_n)
+    if tf.greater(-BETA,tf.reduce_sum(PU_2)) is True:
+        return (tf.reduce_sum(PU_2)-tf.constant(BETA,dtype=tf.float32,shape=[1]))
+    else:
+        return (tf.reduce_sum(PU_1))
+ 
+        
+
+
+#def PU_loss(y_true,y_pred):#logistic loss
+#    #    mask=tf.greater(y_,sample)
+###PU_LOSS
+#    
+##    beta=tf.constant(BETA,dtype=tf.float32,shape=[BATCH_SIZE,1])
+#    one_u=tf.ones(shape=tf.shape(y_true),dtype=tf.float32)
+#    u_mask=tf.abs(tf.add(y_true,-one_u))
+#    P_size=tf.reduce_sum(y_true,axis=None)
+#    u_size=tf.reduce_sum(u_mask)
+#    P_p=tf.multiply(tf.log(1+tf.exp(-y_pred))/P_size,y_true)
+#    P_n=tf.multiply(tf.log(1+tf.exp(y_pred))/P_size,y_true)
+#    P_u=tf.multiply(tf.log(1+tf.exp(y_pred))/u_size,u_mask)
+##    Mask_1=tf.greater_equal(tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta),P_u)
+##    Mask_2=tf.greater(P_u,tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta))
+##    Mask_1=tf.cast(Mask_1,dtype=tf.float32)
+##    Mask_2=tf.cast(Mask_2,dtype=tf.float32)
+#    PU_1=tf.add(Probility_P*P_p,tf.add(P_u,-Probility_P*P_n))
+##    print("one_u.eval():",one_u.eval())
+#    PU_2=tf.add(P_u,-Probility_P*P_n)
+#    if tf.greater(-BETA,tf.reduce_sum(PU_2)) is True:
+#        return (tf.reduce_sum(PU_2)-tf.constant(BETA,dtype=tf.float32,shape=[1]))
+#    else:
+#        return (tf.reduce_sum(PU_1))
+
+
+#def PU_loss(y_true,y_pred):#double hinge loss
+#    #    mask=tf.greater(y_,sample)
+###PU_LOSS
+#    
+##    beta=tf.constant(BETA,dtype=tf.float32,shape=[BATCH_SIZE,1])
+#    one_u=tf.ones(shape=tf.shape(y_true),dtype=tf.float32)
+#    u_mask=tf.abs(tf.add(y_true,-one_u))
+#    P_size=tf.reduce_sum(y_true,axis=None)
+#    u_size=tf.reduce_sum(u_mask)
+#    V_1=tf.add(one_u,-y_pred)/2
+#    V_2=-y_pred
+#    zeros=tf.zeros(shape=tf.shape(y_true),dtype=tf.float32)
+#    P_v1=tf.reduce_max([V_1,V_2,zeros],axis=0,keep_dims=False)
+#    
+#    Pn_1=tf.add(one_u,y_pred)/2
+#    Pn_2=y_pred
+#    P_nn=tf.reduce_max([Pn_1,Pn_2,zeros],axis=0 ,keep_dims=False)
+#
+#    P_p=tf.multiply(P_v1/P_size,y_true)
+#    P_n=tf.multiply(P_nn/P_size,y_true)
+#    P_u=tf.multiply(P_nn/u_size,u_mask)
+##    Mask_1=tf.greater_equal(tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta),P_u)
+##    Mask_2=tf.greater(P_u,tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta))
+##    Mask_1=tf.cast(Mask_1,dtype=tf.float32)
+##    Mask_2=tf.cast(Mask_2,dtype=tf.float32)
+#    PU_1=tf.add(Probility_P*P_p,tf.add(P_u,-Probility_P*P_n))
+##    print("one_u.eval():",one_u.eval())
+#    PU_2=tf.add(P_u,-Probility_P*P_n)
+#    if tf.greater(-BETA,tf.reduce_sum(PU_2)) is True:
+#        return (tf.reduce_sum(PU_2)-tf.constant(BETA,dtype=tf.float32,shape=[1]))
+#    else:
+#        return (tf.reduce_sum(PU_1))
+
+
+#def PU_loss(y_true,y_pred):#Ramp_loss
+#    #    mask=tf.greater(y_,sample)
+###PU_LOSS
+#    
+##    beta=tf.constant(BETA,dtype=tf.float32,shape=[BATCH_SIZE,1])
+#    one_u=tf.ones(shape=tf.shape(y_true),dtype=tf.float32)
+#    u_mask=tf.abs(tf.add(y_true,-one_u))
+#    P_size=tf.reduce_sum(y_true,axis=None)
+#    u_size=tf.reduce_sum(u_mask)
+#    
+#    zeros=tf.zeros(shape=tf.shape(y_true),dtype=tf.float32)
+#    P_v1=tf.reduce_max([tf.reduce_min([tf.add(one_u,-y_pred)/2,one_u],axis=0),zeros],axis=0 ,keep_dims=False)
+#    
+#    Pn_1=tf.reduce_min([one_u,tf.add(one_u,y_pred)/2],axis=0 ,keep_dims=False)
+#
+#    P_nn=tf.reduce_max([Pn_1,zeros],axis=0 ,keep_dims=False)
+#
+#    P_p=tf.multiply(P_v1/P_size,y_true)
+#    P_n=tf.multiply(P_nn/P_size,y_true)
+#    P_u=tf.multiply(P_nn/u_size,u_mask)
+##    Mask_1=tf.greater_equal(tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta),P_u)
+##    Mask_2=tf.greater(P_u,tf.add(tf.scalar_mul(POSITIVE_RATE,P_n),-beta))
+##    Mask_1=tf.cast(Mask_1,dtype=tf.float32)
+##    Mask_2=tf.cast(Mask_2,dtype=tf.float32)
+#    PU_1=tf.add(Probility_P*P_p,tf.add(P_u,-Probility_P*P_n))
+##    print("one_u.eval():",one_u.eval())
+#    PU_2=tf.add(P_u,-Probility_P*P_n)
+#    if tf.greater(-BETA,tf.reduce_sum(PU_2)) is True:
+#        return (tf.reduce_sum(PU_2)-tf.constant(BETA,dtype=tf.float32,shape=[1]))
+#    else:
+#        return (tf.reduce_sum(PU_1))
+
+     
+def cross_entropy(y_true,y_pred):
+    return (-tf.reduce_sum(y_true*tf.log(y_pred),axis=[-1]))
+    
+    
+def Batch_norm(input_x,size):
+#    size = tf.cast(input_x.shape[1:],tf.float32)
+    scale = tf.Variable(tf.ones([size]))
+    shift = tf.Variable(tf.zeros([size]))
+    epsilon = 0.001
+    mean,var=tf.nn.moments(input_x,axes=[0])
+    output_x=tf.nn.batch_normalization(input_x,mean,var,shift,scale,epsilon)
+    return(output_x)
+
+    
+    
+data_dir = 'H:/Personal/PUleasning/Cifra_10/cifar-10-batches-py'
+image_size = 32
+image_dim = image_size * image_size * 3
+#  meta = unpickle(data_dir + '/batches.meta')
+#  label_names = meta[b'label_names']
+label_count = 1
+positive_rate=0.001
+
+
+train_files = [ 'data_batch_%d' % d for d in range(1, 6) ]
+train_data, train_labels = load_data(train_files, data_dir, 10)
+pi = np.random.permutation(len(train_data))
+train_data, train_labels = train_data[pi], train_labels[pi]
+test_data, test_labels = load_data([ 'test_batch' ], data_dir, 10)
+print( "Train:", np.shape(train_data), np.shape(train_labels))
+print ("Test:", np.shape(test_data), np.shape(test_labels))
+  #preprocess data into labeled and unlabeled data
+P_label=[0,1,8,9]
+P_label=np.array(P_label)
+N_label=[2,3,4,5,6,7]
+N_label=np.array(N_label)
+Label_training=np.random.random([len(train_labels)])  
+train_labels_pu=[]
+for i in range(len(train_labels)):
+  for j in range(len(train_labels[1,:])):
+    if j in P_label and train_labels[i,j] ==1:
+      train_labels_pu.append(1)
+    if j in N_label and train_labels[i,j] ==1:
+      train_labels_pu.append(-1)
+train_labels_real=np.array(train_labels_pu)
+for i in range(len(train_labels_pu)):
+  if Label_training[i]>positive_rate or train_labels_pu[i]==-1:
+    train_labels_pu[i]=0
+train_labels_pu=np.float32(train_labels_pu)
+  
+test_labels_pu=[]
+for i in range(len(test_labels)):
+  for j in range(len(test_labels[1,:])):
+    if j in P_label and test_labels[i,j] ==1:
+      test_labels_pu.append(1)
+    if j in N_label and test_labels[i,j] ==1:
+      test_labels_pu.append(-1)
+test_labels_pu=np.float32(test_labels_pu)
+train_labels_pu=np.reshape(train_labels_pu,[50000,1])
+train_labels_real=np.reshape(train_labels_real,[50000,1])
+test_labels_pu=np.reshape(test_labels_pu,[10000,1])
+data = {'train_data': train_data,
+  'train_labels': train_labels_pu,
+  'train_labels_real':train_labels_real,
+  'test_data': test_data,
+  'test_labels': test_labels_pu}    
+
+
+POSITIVE_RATE=0.001
+Probility_P=0.4
+
+
+BETA=1e-4
+
+in_units=len(data['train_data'][1,:])
+h1_units=300
+h2_units=300
+h3_units=300
+h4_units=300
+h5_units=300
+out_units=1
+BATCH_SIZE=10000
+
+W1=tf.Variable(tf.truncated_normal([in_units,h1_units],stddev=0.1))
+b1=tf.Variable(tf.zeros([h1_units]))
+
+W2=tf.Variable(tf.truncated_normal([h1_units,h2_units],stddev=0.1))
+b2=tf.Variable(tf.zeros([h2_units]))
+
+W3=tf.Variable(tf.truncated_normal([h2_units,h3_units],stddev=0.1))
+b3=tf.Variable(tf.zeros([h3_units]))
+
+W4=tf.Variable(tf.truncated_normal([h3_units,h4_units],stddev=0.1))
+b4=tf.Variable(tf.zeros([h4_units]))
+
+W5=tf.Variable(tf.truncated_normal([h4_units,h5_units],stddev=0.1))
+b5=tf.Variable(tf.zeros([h5_units]))
+
+W_out=tf.Variable(tf.truncated_normal([h5_units,out_units],stddev=0.1))
+b_out=tf.Variable(tf.zeros([out_units]))
+
+x=tf.placeholder(tf.float32,[None,in_units],name='x-input')
+lr=tf.placeholder(tf.float32,name='learning_rate')
+drop_out=tf.placeholder(tf.float32,name='dropout')
+
+with tf.name_scope('model_PU') as name_scope:
+    
+#    x=Batch_norm(x,in_units)
+    hidden_layer1=tf.nn.relu(tf.matmul(x,W1)+b1)
+    hidden_layer1_drop=tf.nn.dropout(hidden_layer1,drop_out)
+    
+    hidden_layer1_drop=Batch_norm(hidden_layer1_drop,h1_units)
+    hidden_layer2=tf.nn.relu(tf.matmul(hidden_layer1_drop,W2)+b2)
+    hidden_layer2_drop=tf.nn.dropout(hidden_layer2,drop_out)
+
+    hidden_layer2_drop=Batch_norm(hidden_layer2_drop,h2_units)
+    hidden_layer3=tf.nn.relu(tf.matmul(hidden_layer2_drop,W3)+b3)
+    hidden_layer3_drop=tf.nn.dropout(hidden_layer3,drop_out)
+
+    hidden_layer3_drop=Batch_norm(hidden_layer3_drop,h3_units)
+    hidden_layer4=tf.nn.relu(tf.matmul(hidden_layer3_drop,W4)+b4)
+    hidden_layer4_drop=tf.nn.dropout(hidden_layer4,drop_out)
+    
+    hidden_layer4_drop=Batch_norm(hidden_layer4_drop,h4_units)
+#    hidden_layer5=tf.nn.relu(tf.matmul(hidden_layer4_drop,W5)+b5)
+#    hidden_layer5_drop=tf.nn.dropout(hidden_layer5,drop_out)
+#    
+#    hidden_layer5_drop=Batch_norm(hidden_layer5_drop,h5_units)
+    
+    y=tf.nn.tanh(tf.matmul(hidden_layer4_drop,W_out)+b_out)
+    
+    
+    
+    y_=tf.placeholder(tf.float32,[None,1])#true_value
+    
+    train_step=tf.train.AdamOptimizer(lr).minimize(PU_loss(y_,y))#PU_loss(y_,y))tf.nn.sigmoid_cross_entropy_with_logits(labels=y_,logits=y)
+    
+tf.global_variables_initializer().run()
+
+correct_pred=tf.greater(y,0)
+val=tf.greater(y_,0)
+accuracy=tf.reduce_mean(tf.cast(tf.equal(val,correct_pred),tf.float32))
+#y_test=mnist.test.labels
+#Y_test=[]
+#for i in range(len(y_test)):
+#    for j in range(len(y_test[1,:])):
+#        if (j+1)%2==0 and y_test[i,j]==1:
+#            Y_test.append(1)
+#        elif (j+1)%2==1 and y_test[i,j]==1:
+#            Y_test.append(-1)  
+#Y_test=np.array(Y_test)
+#Y_test=np.reshape(Y_test,[10000,1])
+
+#for count in range(1000):
+#    batch_xs,batch_ys=mnist.train.next_batch(BATCH_SIZE)
+#    y_train=[]
+#    for i in range(len(batch_ys)):
+#        for j in range(len(batch_ys[1,:])):
+#            if (j+1)%2==0 and batch_ys[i,j]==1:
+#                y_train.append(1)
+#            elif (j+1)%2==1 and batch_ys[i,j]==1:
+#                y_train.append(-1)  
+#    y_train=np.array(y_train)
+#    y_train=np.reshape(y_train,[BATCH_SIZE,1])
+#    Label_training=np.random.random([len(y_train)])  
+#    y_train_real=copy.deepcopy(y_train)
+##    set label_rate=POSITIVE_RATE
+#    for i in range(len(y_train)):
+#        if Label_training[i]>positive_rate or y_train[i]==-1:
+#            y_train[i]=0
+#    y_train=np.float32(y_train)
+train_data, train_labels ,train_label_true= np.float32(data['train_data']), data['train_labels'],data['train_labels_real']
+batch_count = np.int(len(train_data) / BATCH_SIZE)
+batches_data = np.split(train_data[:batch_count * BATCH_SIZE], batch_count)
+batches_labels = np.split(train_labels[:batch_count * BATCH_SIZE], batch_count)
+batches_labels_true = np.split(train_label_true[:batch_count * BATCH_SIZE], batch_count)
+    
+print ("Batch per epoch: ", batch_count)
+learning_rate=0.01
+for epoch in range(1, 1+100):
+   if epoch == 10: learning_rate = 0.01
+   if epoch == 50: learning_rate = 0.001
+   for batch_idx in range(batch_count):
+      xs_, ys_ ,ys_real= batches_data[batch_idx], batches_labels[batch_idx], batches_labels_true[batch_idx]
+      batch_res = train_step.run( { x:xs_,y_:ys_,lr:learning_rate,drop_out:0.75 })
+      if batch_idx > 0:
+          print('Training_times:%f, loss=%f'%(epoch,tf.reduce_sum(PU_loss(ys_, y.eval({ x:xs_,y_:ys_,drop_out:1}))).eval()))#tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_train,logits=y.eval({x:batch_xs,y_:y_train,drop_out:0.75}))).eval()))
+          print('accuracy:',accuracy.eval({ x:xs_,y_:ys_real,drop_out:1}))
+#          print( epoch, batch_idx, batch_res[1:])
+#    train_step.run({x:batch_xs,y_:y_train,drop_out:0.75})
+    
+    
+#    print('predict_val:',y.eval(({x:batch_xs,y_:y_train,drop_out:0.75})))
+#    print('_______________________________________________________________________________')
+    
+
+#print('accuracy:',accuracy.eval({x:mnist.test.images,y_:Y_test,drop_out:1.0}))
+print('accuracy:',accuracy.eval({x:data['test_data'],y_:data['test_labels'],drop_out:1.0}))
+#print('predict_val:',y.eval(({x:mnist.test.images,y_:Y_test,drop_out:1.0})))
+    
+    
+    
+    
+    
